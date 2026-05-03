@@ -43,7 +43,7 @@ BLE_MIDI_CHAR_UUID = "7772e5db-3868-4112-a1a9-f2669d106bf3"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
-DEBUG = bool(os.environ.get("BLE_MIDI_BRIDGE_DEBUG"))
+DEBUG = os.environ.get("BLE_MIDI_BRIDGE_DEBUG", "").lower() in ("1", "true", "yes", "on")
 IS_WINDOWS = sys.platform == "win32"
 
 APP_NAME = "ble-midi-bridge"
@@ -78,10 +78,14 @@ def load_config() -> dict | None:
     if not CONFIG_PATH.exists():
         return None
     try:
-        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as e:
         print(f"Config at {CONFIG_PATH} is unreadable ({e}); ignoring.")
         return None
+    if not isinstance(cfg, dict):
+        print(f"Config at {CONFIG_PATH} is not a JSON object; ignoring.")
+        return None
+    return cfg
 
 
 def save_config(cfg: dict) -> None:
@@ -183,6 +187,12 @@ def cleanup_sidecar_loopback() -> bool:
 # BLE discovery
 # ---------------------------------------------------------------------------
 
+def _sanitize_name(s: str) -> str:
+    # BLE advertisement strings come from untrusted peers; strip control
+    # chars so a hostile name can't smuggle ANSI escapes into the terminal.
+    return "".join(c if c.isprintable() else "?" for c in s)
+
+
 async def scan_devices(timeout: float) -> list[dict]:
     """Scan for nearby BLE devices. Returns dicts sorted by:
     advertises BLE-MIDI service first, then RSSI strength."""
@@ -190,7 +200,7 @@ async def scan_devices(timeout: float) -> list[dict]:
     found = await BleakScanner.discover(timeout=timeout, return_adv=True)
     devices = []
     for addr, (dev, adv) in found.items():
-        name = dev.name or adv.local_name or ""
+        name = _sanitize_name(dev.name or adv.local_name or "")
         service_uuids = [u.lower() for u in (adv.service_uuids or [])]
         is_midi = BLE_MIDI_SERVICE_UUID in service_uuids
         if not name and not is_midi:
