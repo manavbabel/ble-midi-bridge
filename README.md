@@ -25,10 +25,10 @@ are fast:
 
 ```
 # 1. First time only - discover your device and save the config:
-uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/main/ble_midi_bridge.py scan
+uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/refs/heads/master/ble_midi_bridge.py scan
 
 # 2. From now on, one command starts the bridge:
-uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/main/ble_midi_bridge.py
+uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/refs/heads/master/ble_midi_bridge.py
 ```
 
 The config is saved in your user directory (see [Commands](#commands)
