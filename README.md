@@ -1,152 +1,132 @@
-# casio-ble-midi
+# ble-midi-bridge
 
-Bridge a **Casio BLE-MIDI piano** (PX-S7000 + WU-BT10 dongle) to a regular
-Windows MIDI port over Bluetooth. Replaces a USB MIDI cable: any DAW,
-browser Web MIDI app, or virtual instrument sees the piano as a normal MIDI
-device, both directions.
+This is a single-file Python script that bridges any **Bluetooth LE MIDI** device
+(Casio WU-BT10 dongle, Yamaha MD-BT01, Roland WM-1, etc.) to a virtual
+MIDI port on your computer. Once configured, your DAW or any MIDI app
+sees the device as a normal MIDI device, in both directions.
 
-Tested on Windows 11 with the new [Windows MIDI Services][wms]. Won't work
-on Windows 10 — it relies on WMS's native loopback transport.
+Cross-platform: this should works on **macOS**, **Linux**, and **Windows 11**, but I made it on Windows and haven't tested it on the other two.
+
+This was inspired by [Perfect Bluetooth MIDI](https://mayerwin.github.io/Perfect-Bluetooth-MIDI-For-Windows/), which was a great concept but didn't work with my Casio piano.
+
+This project was built with the help of Claude. 
+
+## Quickstart
+
+You need the [uv](https://docs.astral.sh/uv/) package manager.
+
+On **Windows** you also need [Windows MIDI Services][wms], because
+Windows can't create virtual MIDI ports natively. The `midi` CLI from
+WMS must be on PATH. Note that most modern Windows 11 installations will have this automatically
+
+There's nothing to install or download — `uv` runs the script straight
+from GitHub and caches it (and its dependencies) so subsequent runs
+are fast:
+
+```
+# 1. First time only - discover your device and save the config:
+uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/main/ble_midi_bridge.py scan
+
+# 2. From now on, one command starts the bridge:
+uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/main/ble_midi_bridge.py
+```
+
+The config is saved in your user directory (see [Commands](#commands)
+below), so the same config works whether you run from URL or from a
+local copy. If you'd rather have a local file, just download
+`ble_midi_bridge.py` and use that path instead — everything else is
+the same.
+
+While the bridge is running, open your DAW and select the MIDI port
+named in step 1. Press **Ctrl+C** to stop; the virtual port is removed
+and the BLE link is closed.
 
 [wms]: https://aka.ms/MIDI
 
----
+## Commands
 
-## What's in here
-
-| File | What it does |
+| Command | What it does |
 | --- | --- |
-| `casio_midi_bridge.py` | The main thing. Run it, get a Windows MIDI port called `Casio PX-S7000`. |
-| `casio_ble_probe.py`   | Diagnostic + record/play utility. `scan`, `listen`, `poke`, `record`, `play`. |
-| `midi_test_client.py`  | Sanity-checks the bridge end-to-end without needing a DAW. |
+| `scan [--timeout N]` | Find nearby BLE devices, pick one, save config |
+| (no command) or `run` | Bridge the saved device to a virtual MIDI port |
+| `run --address ADDR --port-name NAME` | One-shot bridge without saving config |
+| `cleanup` | (Windows) remove an orphaned virtual port from a prior crash |
+| `config` | Show the saved config |
+| `config --reset` | Delete the saved config |
 
----
+The config lives at:
 
-## Bridge: turn the piano into a MIDI port
+- **Windows**: `%APPDATA%\ble-midi-bridge\config.json`
+- **macOS**: `~/Library/Application Support/ble-midi-bridge/config.json`
+- **Linux**: `${XDG_CONFIG_HOME:-~/.config}/ble-midi-bridge/config.json`
 
-```
-uv run casio_midi_bridge.py
-```
+## Platform notes
 
-This scans for the WU-BT10, creates a Windows MIDI port called
-`Casio PX-S7000`, and bridges it bidirectionally to the piano. Open that
-port in any MIDI app. Press **Ctrl+C** to stop — the port is removed and
-the BLE connection is closed.
+**macOS / Linux:** virtual MIDI ports are created directly via CoreMIDI
+or ALSA. Nothing to install beyond `uv`. Your app will see the port
+named in `scan` as both a source and a destination, like the macOS IAC
+bus.
 
-Other modes:
+**Windows:** install [Windows MIDI Services][wms] if not installed already. The bridge uses WMS's
+loopback feature to expose the virtual port. If a previous run crashed
+and left an orphan port, run `cleanup` (or, worst case,
+`Restart-Service midisrv -Force` from an admin PowerShell). On
+Windows 11, the public port is the one named what you chose during
+`scan`; **don't** open the one ending in `[do not use - internal]` from
+your DAW — that's the bridge's own end of the loopback.
 
-```
-uv run casio_midi_bridge.py --address 78:5E:A2:63:AE:7D    # skip BLE scan
-uv run casio_midi_bridge.py --port "My Piano"              # custom port name
-uv run casio_midi_bridge.py --cleanup                       # remove leftover port from a crash
-CASIO_BRIDGE_DEBUG=1 uv run casio_midi_bridge.py            # log every MIDI message in/out
-```
+## How it works (and is it legal?)
 
-When in your DAW or app, **use the port literally named `Casio PX-S7000`** —
-not the one ending in `[do not use - internal]`. The "internal" one is the
-script's own end of the loopback; opening it as an app does nothing.
+Yes, it's legal. **BLE-MIDI is a public standard** published by Apple
+and the MIDI Manufacturers Association in 2015 — no vendor-specific or
+reverse-engineered code. The script implements that standard exactly as
+documented. See the
+[official spec](https://www.midi.org/specifications/midi-transports-specifications/bluetooth-le-midi).
 
-## Record and play back
+Internally:
 
-`casio_ble_probe.py` has `record` and `play` subcommands (independent of
-the bridge — they talk to BLE directly):
-
-```
-uv run casio_ble_probe.py scan
-uv run casio_ble_probe.py record --address 78:5E:A2:63:AE:7D --duration 30 --out song.jsonl
-uv run casio_ble_probe.py play   --address 78:5E:A2:63:AE:7D --in  song.jsonl
-```
-
-The recording is JSON Lines: one line per MIDI message with a host-relative
-timestamp. Replay preserves original timing.
-
-## Sanity test
-
-If the bridge isn't working, run this in a second terminal *while the bridge
-is running*:
-
-```
-uv run midi_test_client.py
-```
-
-It listens on the public port for 5 seconds (play notes during that window),
-then sends a middle-C NoteOn/Off so you should hear the piano. If this works
-but your real app doesn't, the bridge is fine and the issue is in your app.
-
----
+- `bleak` connects to the BLE-MIDI service (`03b80e5a-…`) and
+  subscribes to notifications on the standard BLE-MIDI characteristic
+  (`7772e5db-…`).
+- Inbound BLE packets are unframed (timestamp byte, running status) and
+  emitted to the virtual MIDI port via `python-rtmidi`.
+- Outbound MIDI from your DAW is wrapped in a BLE-MIDI packet and
+  written to the same characteristic.
 
 ## Troubleshooting
 
-- **`midi` command not found.** Windows MIDI Services isn't installed.
-  Get it from [aka.ms/MIDI][wms]. The bridge needs the `midi` CLI on PATH.
+- **`midi` command not found (Windows).** Windows MIDI Services isn't
+  installed. Get it from [aka.ms/MIDI][wms].
+- **`python-rtmidi` import crashes silently (Windows).** Python 3.13
+  has issues with `python-rtmidi` 1.5.x on Windows. Use Python 3.12 —
+  this repo pins it via `.python-version`.
+- **Bridge connects but no MIDI flows in either direction (Windows).**
+  Almost always: the app is connected to the `[do not use - internal]`
+  port instead of the public one. Switch ports.
+- **`scan` doesn't show your device.** Make sure: the device is
+  powered on, advertising (some pianos need a button press), and
+  **nothing else is currently connected to it** (a phone or tablet's
+  MIDI app will hold the BLE link). Disconnect other clients, then
+  retry. Try `scan --timeout 16` for a longer window.
+- **Crash left an orphan MIDI port behind (Windows).** Run
+  `uv run ble_midi_bridge.py cleanup`. If that doesn't clear it, the
+  process lost track of the association id;
+  `Restart-Service midisrv -Force` from admin PowerShell will reset
+  WMS. Orphans are harmless until then.
 
-- **`python-rtmidi` import crashes silently (exit 127).** Python 3.13 is
-  broken with `python-rtmidi` 1.5.x on Windows. Use Python 3.12. Pin it in
-  `.python-version`.
+## Debugging
 
-- **Bridge connects to the piano but no MIDI flows in either direction.**
-  Almost always: the app is connected to `Casio PX-S7000 [do not use - internal]`
-  instead of `Casio PX-S7000`. Switch ports.
+Set `BLE_MIDI_BRIDGE_DEBUG=1` to log every BLE and MIDI byte in both
+directions:
 
-- **Web MIDI app doesn't see the port.** Some browser-based MIDI apps don't
-  request `software: true` access. Try a different web app, or use a native
-  app (Reaper, Ableton, MIDI-OX) to confirm the port itself is fine.
+```
+# bash / zsh
+BLE_MIDI_BRIDGE_DEBUG=1 uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/main/ble_midi_bridge.py
 
-- **Bridge says "No WU-BT10 found."** Make sure: the dongle is plugged into
-  the piano, the piano is on, and **nothing else is currently connected to it**
-  (Casio's Music Space app on iPad will hold the BLE link). Close other clients,
-  then retry.
+# PowerShell
+$env:BLE_MIDI_BRIDGE_DEBUG=1; uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/main/ble_midi_bridge.py
+```
 
-- **Crash left an orphan MIDI port behind.** Run `uv run casio_midi_bridge.py
-  --cleanup`. If that doesn't clear it, the bridge has lost track of the
-  association id; the cleanest fix is `Restart-Service midisrv -Force` from
-  an admin PowerShell, or just reboot. Orphans are harmless until then.
+## License
 
-- **loopMIDI / TeVirtualMIDI virtual ports don't show up.** Don't use them
-  on Windows 11 — they bypass WMS and silently fail to register. The bridge
-  uses WMS's native loopback transport instead, which works.
-
----
-
-## How it works
-
-### BLE side
-
-The WU-BT10 dongle exposes **two GATT services**:
-
-- The standard Bluetooth MIDI service (`03b80e5a-ede8-4b33-a751-6ce34ec4c700`)
-  — the one defined by the MMA / Apple spec. Carries normal MIDI 1.0 byte
-  streams in standard BLE-MIDI packets. **This is what the bridge uses.**
-- A proprietary Casio "iroha BLE" service (`5052494d-2dab-0341-...`,
-  ASCII-decodes to `PRIM-…iroha BLE`). Used by Casio's Music Space app for
-  app-specific features, not for general MIDI. The bridge ignores it.
-
-The piano sends each NoteOn preceded by `CC 88` (high-resolution velocity
-prefix) — that's standard MIDI 1.0 for the Smooth Sound Engine, not a quirk.
-
-### MIDI port side
-
-Windows MIDI Services has a built-in **virtual loopback transport**: ask it
-to create a pair of named endpoints A and B, and anything written to A comes
-out at B (and vice versa). The bridge:
-
-1. Creates a loopback pair with `midi loopback create`.
-2. Names the public side `Casio PX-S7000` (what apps connect to).
-3. Names the internal side `Casio PX-S7000 [do not use - internal]` (what
-   the script itself connects to).
-4. Forwards BLE notifications → internal port (apps see them as input).
-5. Forwards messages from the internal port → BLE writes (apps' output).
-
-Apps see only one device that does both directions, just like USB.
-
-### Cleanup
-
-The association id of the loopback is written to a sidecar file in `%TEMP%`.
-On startup, if the sidecar is present from a prior crash, the bridge tries
-to remove that loopback before creating a new one. On clean Ctrl+C, the
-loopback is removed via `try/finally` and the sidecar is deleted.
-
-If the script is killed without running `finally` (SIGKILL, power loss),
-the orphan loopback persists until midisrv restarts or the PC reboots.
-The `--cleanup` flag handles this when the sidecar is intact; otherwise
-restart `midisrv`.
+MIT — see [LICENSE](LICENSE).
