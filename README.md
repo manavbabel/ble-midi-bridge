@@ -1,11 +1,8 @@
 # ble-midi-bridge
 
-This is a single-file Python script that bridges any **Bluetooth LE MIDI** device
-(Casio WU-BT10 dongle, Yamaha MD-BT01, Roland WM-1, etc.) to a virtual
-MIDI port on your computer. Once configured, your DAW or any MIDI app
-sees the device as a normal MIDI device, in both directions.
+This is a single-file Python script that bridges any **Bluetooth LE MIDI** device (Casio WU-BT10 dongle, Yamaha MD-BT01, Roland WM-1, etc.) to a virtual MIDI port on your computer. Once configured, your music software — a DAW like Ableton, FL Studio, GarageBand, MainStage, or anything else that speaks MIDI — sees the device as a normal MIDI device, in both directions.
 
-Cross-platform: this should works on **macOS**, **Linux**, and **Windows 11**, but I made it on Windows and haven't tested it on the other two.
+Cross-platform: this should work on **macOS**, **Linux**, and **Windows 11**, but I made it on Windows and haven't tested it on the other two.
 
 This was inspired by [Perfect Bluetooth MIDI](https://mayerwin.github.io/Perfect-Bluetooth-MIDI-For-Windows/), which was a great concept but didn't work with my Casio piano.
 
@@ -13,33 +10,26 @@ This project was built with the help of Claude.
 
 ## Quickstart
 
-You need the [uv](https://docs.astral.sh/uv/) package manager.
+**Prerequisites:**
 
-On **Windows** you also need [Windows MIDI Services][wms], because
-Windows can't create virtual MIDI ports natively. The `midi` CLI from
-WMS must be on PATH. Note that most modern Windows 11 installations will have this automatically
+- The [uv](https://docs.astral.sh/uv/) package manager
+- **(Windows only)** [Windows MIDI Services][wms] — from Microsoft, may already be installed! Windows can't create virtual MIDI ports natively; the WMS installer adds a `midi` command that this script uses behind the scenes. No manual setup needed.
 
-There's nothing to install or download — `uv` runs the script straight
-from GitHub and caches it (and its dependencies) so subsequent runs
-are fast:
+First time only, to discover your device and save config:
 
-```
-# 1. First time only - discover your device and save the config:
+```bash
 uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/refs/heads/master/ble_midi_bridge.py scan
+```
 
-# 2. From now on, one command starts the bridge:
+Then, to start the bridge:
+
+```bash
 uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/refs/heads/master/ble_midi_bridge.py
 ```
 
-The config is saved in your user directory (see [Commands](#commands)
-below), so the same config works whether you run from URL or from a
-local copy. If you'd rather have a local file, just download
-`ble_midi_bridge.py` and use that path instead — everything else is
-the same.
+The config is saved in your user directory (see [Commands](#commands) below), so the same config works whether you run from URL or from a local copy. If you'd rather have a local file, just download `ble_midi_bridge.py` and use that path instead — everything else is the same.
 
-While the bridge is running, open your DAW and select the MIDI port
-named in step 1. Press **Ctrl+C** to stop; the virtual port is removed
-and the BLE link is closed.
+While the bridge is running, open your DAW and select the MIDI port named in step 1. Press **Ctrl+C in the terminal window** to stop the bridge; the virtual port is removed and the BLE link is closed.
 
 [wms]: https://aka.ms/MIDI
 
@@ -49,10 +39,10 @@ and the BLE link is closed.
 | --- | --- |
 | `scan [--timeout N]` | Find nearby BLE devices, pick one, save config |
 | (no command) or `run` | Bridge the saved device to a virtual MIDI port |
-| `run --address ADDR --port-name NAME` | One-shot bridge without saving config |
+| `run --address ADDR --port-name NAME` | One-shot run with a specific Bluetooth address (e.g. `78:5E:A2:63:AE:7D`), no config saved |
 | `cleanup` | (Windows) remove an orphaned virtual port from a prior crash |
 | `config` | Show the saved config |
-| `config --reset` | Delete the saved config |
+| `config --reset` | Delete the saved config (you'll need to run `scan` again) |
 
 The config lives at:
 
@@ -62,26 +52,13 @@ The config lives at:
 
 ## Platform notes
 
-**macOS / Linux:** virtual MIDI ports are created directly via CoreMIDI
-or ALSA. Nothing to install beyond `uv`. Your app will see the port
-named in `scan` as both a source and a destination, like the macOS IAC
-bus.
+**macOS / Linux:** virtual MIDI ports are created directly via CoreMIDI or ALSA. Nothing to install beyond `uv`. Your app will see the port named in `scan` as both a source and a destination, like the macOS IAC bus.
 
-**Windows:** install [Windows MIDI Services][wms] if not installed already. The bridge uses WMS's
-loopback feature to expose the virtual port. If a previous run crashed
-and left an orphan port, run `cleanup` (or, worst case,
-`Restart-Service midisrv -Force` from an admin PowerShell). On
-Windows 11, the public port is the one named what you chose during
-`scan`; **don't** open the one ending in `[do not use - internal]` from
-your DAW — that's the bridge's own end of the loopback.
+**Windows:** install [Windows MIDI Services][wms] if not installed already. The bridge uses WMS's loopback feature to expose the virtual port. If a previous run crashed and left an orphan port, run `cleanup` (or, worst case, `Restart-Service midisrv -Force` from an admin PowerShell). On Windows 11, the public port is the one named what you chose during `scan`; **don't** open the one ending in `[do not use - internal]` from your DAW — that's the bridge's own end of the loopback.
 
 ## How it works (and is it legal?)
 
-Yes, it's legal. **BLE-MIDI is a public standard** published by Apple
-and the MIDI Manufacturers Association in 2015 — no vendor-specific or
-reverse-engineered code. The script implements that standard exactly as
-documented. See the
-[official spec](https://www.midi.org/specifications/midi-transports-specifications/bluetooth-le-midi).
+Yes, it's legal. **BLE-MIDI is a public standard** published by Apple and the MIDI Manufacturers Association in 2015 — no vendor-specific or reverse-engineered code. The script implements that standard exactly as documented. See the [official spec](https://www.midi.org/specifications/midi-transports-specifications/bluetooth-le-midi).
 
 Internally:
 
@@ -121,10 +98,10 @@ directions:
 
 ```
 # bash / zsh
-BLE_MIDI_BRIDGE_DEBUG=1 uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/main/ble_midi_bridge.py
+BLE_MIDI_BRIDGE_DEBUG=1 uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/refs/heads/master/ble_midi_bridge.py
 
 # PowerShell
-$env:BLE_MIDI_BRIDGE_DEBUG=1; uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/main/ble_midi_bridge.py
+$env:BLE_MIDI_BRIDGE_DEBUG=1; uv run https://raw.githubusercontent.com/manavbabel/ble-midi-bridge/refs/heads/master/ble_midi_bridge.py
 ```
 
 ## License
